@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SYS_PREDICTOR // Project ETA & Momentum Burn-down Simulator</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #050b05;
+            color: #33ff33;
+            font-family: 'Share Tech Mono', monospace;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        /* CRT Screen Container */
+        .crt-container {
+            width: 100%;
+            max-width: 920px;
+            background: #020d02;
+            border: 4px solid #1a531a;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(51, 255, 51, 0.2), inset 0 0 30px rgba(0, 0, 0, 0.8);
+            position: relative;
+            padding: 25px;
+            overflow: hidden;
+        }
+
+        /* CRT Scanlines and Flicker Effect */
+        .crt-container::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            z-index: 10;
+            background-size: 100% 3px, 6px 100%;
+            pointer-events: none;
+        }
+
+        .crt-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(circle at center, transparent 60%, rgba(0,0,0,0.6) 100%);
+            pointer-events: none;
+            z-index: 11;
+        }
+
+        /* Header */
+        header {
+            border-bottom: 2px dashed #33ff33;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 8px rgba(51, 255, 51, 0.6);
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            letter-spacing: 2px;
+        }
+
+        .sub-title {
+            font-size: 0.85rem;
+            color: #22aa22;
+        }
+
+        /* Layout Grid */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .main-grid { grid-template-columns: 1fr; }
+        }
+
+        /* Form Inputs */
+        .panel {
+            border: 1px solid #1a531a;
+            padding: 15px;
+            background: rgba(0, 20, 0, 0.4);
+        }
+
+        .panel-title {
+            color: #aaffaa;
+            margin-bottom: 15px;
+            font-size: 1rem;
+            border-bottom: 1px solid #1a531a;
+            padding-bottom: 5px;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-size: 0.8rem;
+            margin-bottom: 4px;
+            color: #22cc22;
+        }
+
+        input {
+            background: #000;
+            border: 1px solid #33ff33;
+            color: #33ff33;
+            font-family: 'Share Tech Mono', monospace;
+            padding: 8px;
+            font-size: 0.95rem;
+            outline: none;
+            box-shadow: inset 0 0 5px rgba(51, 255, 51, 0.3);
+        }
+
+        input:focus {
+            box-shadow: 0 0 10px rgba(51, 255, 51, 0.8);
+        }
+
+        /* Run Button */
+        .btn-run {
+            margin-top: 10px;
+            background: #33ff33;
+            color: #000;
+            border: none;
+            padding: 12px;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(51, 255, 51, 0.5);
+            transition: all 0.2s;
+        }
+
+        .btn-run:hover {
+            background: #88ff88;
+            box-shadow: 0 0 25px rgba(51, 255, 51, 0.9);
+        }
+
+        .btn-run:active {
+            transform: scale(0.98);
+        }
+
+        /* Terminal Console Screen */
+        .console {
+            background: #000;
+            border: 1px solid #33ff33;
+            height: 380px;
+            padding: 12px;
+            overflow-y: auto;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.9);
+        }
+
+        .console::-webkit-scrollbar {
+            width: 6px;
+        }
+        .console::-webkit-scrollbar-thumb {
+            background: #1a531a;
+        }
+
+        .log-line {
+            margin-bottom: 4px;
+            word-break: break-all;
+        }
+
+        .log-success { color: #33ff33; }
+        .log-warn { color: #ffff33; }
+        .log-danger { color: #ff3333; text-shadow: 0 0 5px rgba(255, 51, 51, 0.8); }
+        .log-system { color: #33ffff; }
+
+        /* Summary Stats Box */
+        .summary-box {
+            margin-top: 15px;
+            border: 2px double #ffff33;
+            padding: 10px;
+            background: rgba(20, 20, 0, 0.5);
+            display: none;
+        }
+
+        .blink {
+            animation: blinker 1s linear infinite;
+        }
+
+        @keyframes blinker {
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="crt-container">
+    <div class="crt-overlay"></div>
+    
+    <header>
+        <h1>SYS_MONTE_CARLO // MOMENTUM FLOW PREDICTOR v2.0</h1>
+        <div class="sub-title">> ADAPTIVE BURN-DOWN SIMULATOR (STARTUP FRICTION + FLOW MODEL)</div>
+    </header>
+
+    <div class="main-grid">
+        <!-- Input Panel -->
+        <div class="panel">
+            <div class="panel-title">[ PARAMETER_INPUT ]</div>
+            
+            <div class="form-group">
+                <label for="totalUnits">總工作量 / 總作業頁數 (Total Units):</label>
+                <input type="number" id="totalUnits" value="60" min="1">
+            </div>
+
+            <div class="form-group">
+                <label for="daysLeft">距離 Deadline 剩餘天數 (Days Left):</label>
+                <input type="number" id="daysLeft" value="7" min="1">
+            </div>
+
+            <div class="form-group">
+                <label for="dailyCapacity">基準每日產出 (Base Daily Capacity):</label>
+                <input type="number" id="dailyCapacity" value="10" min="1">
+            </div>
+
+            <div class="form-group">
+                <label for="slothRate">初始拖延/擺爛機率 (Initial Sloth Risk %):</label>
+                <input type="number" id="slothRate" value="50" min="0" max="100">
+            </div>
+
+            <div class="form-group">
+                <label for="distractRate">突發干擾/追劇機率 (Distraction Risk %):</label>
+                <input type="number" id="distractRate" value="30" min="0" max="100">
+            </div>
+
+            <button class="btn-run" onclick="runSimulation()">[ EXECUTE 1,000 SIMULATIONS ]</button>
+        </div>
+
+        <!-- Terminal Output -->
+        <div class="panel">
+            <div class="panel-title">[ TERMINAL_LOG_OUTPUT ]</div>
+            <div class="console" id="consoleLog">
+                <div class="log-line log-system">> System initialized. Ready for adaptive simulation.</div>
+                <div class="log-line log-system">> Model: Startup Friction (Early Phase) -> Momentum Flow (Late Phase).</div>
+                <div class="log-line">> <span class="blink">_</span></div>
+            </div>
+
+            <!-- Summary Alert -->
+            <div class="summary-box" id="summaryBox">
+                <div class="log-warn" id="summaryTitle" style="font-weight: bold; font-size: 0.95rem;"></div>
+                <div id="summaryContent" style="margin-top: 5px; font-size: 0.85rem;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Web Audio API Synthesizer
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playBeep(freq, type, duration) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type || 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function playTypeClick() {
+        playBeep(800 + Math.random() * 400, 'triangle', 0.03);
+    }
+
+    function playAlertSound() {
+        playBeep(440, 'square', 0.15);
+        setTimeout(() => playBeep(220, 'square', 0.3), 150);
+    }
+
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // 核心演算法：計算單日產出 (包含「先慢後快」慣性曲線)
+    function calculateDailyOutput(d, totalDays, baseCap, slothProb, distractProb, currentProgress, totalUnits) {
+        let todayOutput = baseCap;
+        let statusNote = "";
+        let statusClass = "log-success";
+
+        // 前 30% 天數判定為「初期啟動熱身期」
+        const isEarlyPhase = (d / totalDays) <= 0.3;
+        
+        // 初期拖延率上升，後期進入節奏後拖延率降至 35%
+        const adjustedSlothProb = isEarlyPhase ? Math.min(0.95, slothProb * 1.3) : slothProb * 0.35;
+        const adjustedDistractProb = isEarlyPhase ? Math.min(0.95, distractProb * 1.2) : distractProb * 0.5;
+
+        const isSloth = Math.random() < adjustedSlothProb;
+        const isDistracted = Math.random() < adjustedDistractProb;
+
+        if (isSloth) {
+            todayOutput *= 0.15; // 擺爛或刷短影片
+            statusNote = isEarlyPhase ? "STARTUP FRICTION! (擺爛摸索中)" : "SLOTH TRIGGERED";
+            statusClass = "log-danger";
+        } else if (isDistracted) {
+            todayOutput *= 0.5;
+            statusNote = "Distracted by social media";
+            statusClass = "log-warn";
+        } else {
+            if (isEarlyPhase) {
+                todayOutput *= 0.75; // 熱身期產出較保守
+                statusNote = "Warming up (熱身建立節奏)";
+                statusClass = "log-warn";
+            } else {
+                // 後期進入專注狀態，產出提升 135%
+                todayOutput *= 1.35;
+                statusNote = "MOMENTUM FLOW! (手感爆發中)";
+                statusClass = "log-system";
+            }
+        }
+
+        // 死線前 1 天壓迫爆發 (Deadline Panic)
+        if (totalDays - d <= 1 && (totalUnits - currentProgress) > todayOutput) {
+            todayOutput *= 1.9;
+            statusNote = "DEADLINE PANIC! (190% Overclock)";
+            statusClass = "log-danger";
+        }
+
+        return { output: todayOutput, note: statusNote, cssClass: statusClass };
+    }
+
+    async function runSimulation() {
+        const consoleLog = document.getElementById('consoleLog');
+        const summaryBox = document.getElementById('summaryBox');
+        
+        const total = parseFloat(document.getElementById('totalUnits').value);
+        const days = parseInt(document.getElementById('daysLeft').value);
+        const dailyCap = parseFloat(document.getElementById('dailyCapacity').value);
+        const slothProb = parseFloat(document.getElementById('slothRate').value) / 100;
+        const distractProb = parseFloat(document.getElementById('distractRate').value) / 100;
+
+        summaryBox.style.display = 'none';
+        consoleLog.innerHTML = '';
+
+        function appendLog(text, className = '') {
+            const line = document.createElement('div');
+            line.className = `log-line ${className}`;
+            line.innerHTML = text;
+            consoleLog.appendChild(line);
+            consoleLog.scrollTop = consoleLog.scrollHeight;
+            playTypeClick();
+        }
+
+        appendLog(`> Initiating Monte Carlo Engine...`, 'log-system');
+        await sleep(200);
+        appendLog(`> Running 1,000 parallel universe timelines with Momentum Curve...`, 'log-system');
+        await sleep(300);
+
+        // 1. 展示單一平行宇宙範例 (Universe #042)
+        appendLog(`----------------------------------------`);
+        appendLog(`> DISPLAYING SAMPLE TIMELINE [UNIVERSE #042]:`, 'log-warn');
+        
+        let sampleProgress = 0;
+
+        for (let d = 1; d <= days; d++) {
+            await sleep(180);
+            
+            const res = calculateDailyOutput(d, days, dailyCap, slothProb, distractProb, sampleProgress, total);
+            sampleProgress += res.output;
+            const pct = Math.min(100, Math.round((sampleProgress / total) * 100));
+
+            appendLog(`[DAY ${d.toString().padStart(2, '0')}] Done: ${pct.toString().padStart(3, ' ')}% | ${res.note}`, res.cssClass);
+
+            if (sampleProgress >= total) {
+                appendLog(`> Task finished on Day ${d}! Momentum state reached.`, 'log-success');
+                break;
+            }
+        }
+
+        if (sampleProgress < total) {
+            appendLog(`[FAIL] Deadline reached! Only ${Math.round((sampleProgress/total)*100)}% completed.`, 'log-danger');
+        }
+
+        appendLog(`----------------------------------------`);
+        await sleep(400);
+
+        // 2. 背景跑 1,000 次蒙地卡羅模擬
+        let successCount = 0;
+        let totalDaysSpent = 0;
+
+        for (let i = 0; i < 1000; i++) {
+            let prog = 0;
+            let dSpent = 0;
+
+            for (let d = 1; d <= days + 14; d++) { // 最多模擬逾期 14 天
+                dSpent = d;
+                const res = calculateDailyOutput(d, days, dailyCap, slothProb, distractProb, prog, total);
+                prog += res.output;
+                if (prog >= total) break;
+            }
+
+            if (dSpent <= days) {
+                successCount++;
+            }
+            totalDaysSpent += dSpent;
+        }
+
+        const successRate = ((successCount / 1000) * 100).toFixed(1);
+        const avgDaysNeeded = (totalDaysSpent / 1000).toFixed(1);
+
+        playAlertSound();
+
+        // 3. 輸出演算法統計報告
+        summaryBox.style.display = 'block';
+        const summaryTitle = document.getElementById('summaryTitle');
+        const summaryContent = document.getElementById('summaryContent');
+
+        if (successRate >= 80) {
+            summaryTitle.innerText = `[SUMMARY] STATUS: LOW RISK (${successRate}% Success)`;
+            summaryTitle.className = "log-success";
+            summaryContent.innerHTML = `按時完成機率高達 <b>${successRate}%</b>。<br>平均耗時：<b>${avgDaysNeeded} 天</b>。<br><b>[SYSTEM_LOG]</b> 演算法顯示您的「後期慣性爆發」足以覆蓋前期的熱身耗時，請繼續保持！`;
+        } else if (successRate >= 40) {
+            summaryTitle.innerText = `[SUMMARY] STATUS: MODERATE DANGER (${successRate}% Success)`;
+            summaryTitle.className = "log-warn";
+            summaryContent.innerHTML = `按時完成機率為 <b>${successRate}%</b>。<br>預估平均耗時：<b>${avgDaysNeeded} 天</b>（目標死線為 ${days} 天）。<br><b>[SYSTEM_WARNING]</b> 前期的「啟動摩擦力」消耗過多時間！建議將初始拖延機率調低，或前兩天先完成 15% 的小進度，以提前觸發 Momentum Flow！`;
+        } else {
+            summaryTitle.innerText = `[SUMMARY] CRITICAL WARNING! (${successRate}% Success)`;
+            summaryTitle.className = "log-danger";
+            summaryContent.innerHTML = `按時完成機率僅 <b>${successRate}%</b>！<br>平均需耗時 <b>${avgDaysNeeded} 天</b>，預計嚴重延誤！<br><b>[FATAL_ALERT]</b> 前期拖延過久，導致後期即便觸發加速也無法及時趕上！建議立刻開工突破啟動門檻！`;
+        }
+
+        appendLog(`> Simulation complete. Report generated below.`, 'log-system');
+    }
+</script>
+
+</body>
+</html>
